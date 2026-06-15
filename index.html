@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16110,6 +16111,7 @@ function feRenderImportInput(){
     (feImportErr?'<div class="fe-err">'+feEsc(feImportErr)+'</div>':'')+
     '<div class="fe-actions" style="margin-top:14px">'+
       '<button class="fe-btn" '+(feImportBusy?'disabled':'')+' onclick="feRunImportParse()">'+(feImportBusy?'Reading your list…':(hasKey?'Smart parse':'Parse list'))+'</button>'+
+      '<button class="fe-ghost" '+(feImportBusy?'disabled':'')+' onclick="feImportFromDrive()">Pick from Google Drive</button>'+
       (hasKey?'':'<button class="fe-sm" onclick="feSetKey()">Add AI key</button>')+
       '<button class="fe-sm" onclick="feCloseModal()">Cancel</button>'+
     '</div></div></div>';
@@ -16272,6 +16274,57 @@ function feRenderTouch(l,t){
 }
 function feOpenLead(id){ feSelectedId=id; feView='lead'; feEditKey=null; renderFollowup(); }
 function feGoDash(){ feView='dashboard'; renderFollowup(); }
+
+/* ---- Google Drive import — reuses the Marketing tab's authorized connection ---- */
+async function feFetchDriveText(fileId, fileName, mimeType){
+  if (typeof gdAccessToken==='undefined' || !gdAccessToken){ if(typeof gdSignIn==='function') gdSignIn(); throw new Error('Connecting to Google — pick the file again once signed in.'); }
+  const mt=(mimeType||'').toLowerCase();
+  const auth={ headers:{ 'Authorization':'Bearer '+gdAccessToken } };
+  if (mt.includes('vnd.google-apps.document')){
+    const r=await fetch('https://www.googleapis.com/drive/v3/files/'+fileId+'/export?mimeType=text/plain&supportsAllDrives=true', auth);
+    if(!r.ok) throw new Error('Could not read the Google Doc (HTTP '+r.status+'). Make sure download is allowed for your access.');
+    return await r.text();
+  }
+  if (typeof gdFetchSheetData==='function'){
+    const res=await gdFetchSheetData(fileId, fileName, mimeType);
+    const aoa=(res&&res.aoa)||[];
+    return aoa.map(function(row){ return (row||[]).map(function(c){ return c==null?'':String(c); }).join('\t'); }).join('\n');
+  }
+  const r=await fetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media&supportsAllDrives=true', auth);
+  if(!r.ok) throw new Error('Could not read the file (HTTP '+r.status+').');
+  return await r.text();
+}
+async function feDriveParseAndPreview(fileId, fileName, mimeType){
+  feImportErr=''; feImportBusy=true; feRenderImportInput();
+  try{
+    const raw=(await feFetchDriveText(fileId, fileName, mimeType)||'').trim();
+    if(!raw) throw new Error('That file looks empty.');
+    if(feKey()){ try{ feImportPreview=await feParseSmart(raw); } catch(e){ feImportErr=((e&&e.message)||'Smart parse failed')+' — using simple parse.'; feImportPreview=feParseSimple(raw); } }
+    else { feImportPreview=feParseSimple(raw); }
+    feImportBusy=false;
+    if(!feImportPreview.length){ feImportErr='No leads found in "'+(fileName||'file')+'".'; feRenderImportInput(); return; }
+    feRenderImportPreview();
+  }catch(e){ feImportBusy=false; feImportErr=(e&&e.message)||'Could not import from Google Drive.'; feRenderImportInput(); }
+}
+function feImportFromDrive(){
+  if (typeof gdEnsureInit==='function'){ try{ gdEnsureInit(); }catch(e){} }
+  if (typeof gdAccessToken==='undefined' || !gdAccessToken){
+    if(typeof gdSignIn==='function'){ gdSignIn(); feToast('Sign in to Google, then click "Pick from Google Drive" again','info'); }
+    else { feToast('Google Drive is not configured','error'); }
+    return;
+  }
+  if (typeof google==='undefined' || !google.picker){ feToast('Google Picker still loading — try again in a moment','info'); return; }
+  const view=new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(google.picker.DocsViewMode.LIST);
+  const picker=new google.picker.PickerBuilder()
+    .enableFeature(google.picker.Feature.NAV_HIDDEN)
+    .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
+    .setOAuthToken(gdAccessToken)
+    .setDeveloperKey(GDRIVE_CONFIG.apiKey)
+    .addView(view)
+    .setCallback(function(data){ if(data.action===google.picker.Action.PICKED && data.docs && data.docs[0]){ const f=data.docs[0]; feDriveParseAndPreview(f.id, f.name, f.mimeType); } })
+    .build();
+  picker.setVisible(true);
+}
 
 loadLocal();
 loadDemos();   // v13.7 — needed for Sales Rep Performance scoring even before Demo Tracker tab is opened
