@@ -16310,21 +16310,46 @@ async function feDriveParseAndPreview(fileId, fileName, mimeType){
 function feImportFromDrive(){
   if (typeof gdEnsureInit==='function'){ try{ gdEnsureInit(); }catch(e){} }
   if (typeof gdAccessToken==='undefined' || !gdAccessToken){
-    if(typeof gdSignIn==='function'){ gdSignIn(); feToast('Sign in to Google, then click "Pick from Google Drive" again','info'); }
+    if(typeof gdSignIn==='function'){ gdSignIn(); feToast('Sign in to Google, then click Google Drive again','info'); }
     else { feToast('Google Drive is not configured','error'); }
     return;
   }
-  if (typeof google==='undefined' || !google.picker){ feToast('Google Picker still loading — try again in a moment','info'); return; }
-  const view=new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false).setMode(google.picker.DocsViewMode.LIST);
-  const picker=new google.picker.PickerBuilder()
-    .enableFeature(google.picker.Feature.NAV_HIDDEN)
-    .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
-    .setOAuthToken(gdAccessToken)
-    .setDeveloperKey(GDRIVE_CONFIG.apiKey)
-    .addView(view)
-    .setCallback(function(data){ if(data.action===google.picker.Action.PICKED && data.docs && data.docs[0]){ const f=data.docs[0]; feDriveParseAndPreview(f.id, f.name, f.mimeType); } })
-    .build();
-  picker.setVisible(true);
+  feOpenDriveBrowser();
+}
+function feOpenDriveBrowser(){
+  document.getElementById('fe-modal-root').innerHTML=
+  '<div class="fe-overlay" onclick="if(event.target===this)feCloseModal()"><div class="fe-modal">'+
+    '<div class="fe-rowb" style="margin-bottom:10px"><h3 class="fe-h">Pick a file from Google Drive</h3><button class="fe-x" onclick="feCloseModal()">&times;</button></div>'+
+    '<p class="fe-sub" style="margin:0 0 10px">Choose your leads document (Google Doc, Sheet, CSV or Excel) — it reads and routes every lead into a cadence.</p>'+
+    '<input id="fe-drive-q" class="fe-in" placeholder="Search by file name…" oninput="feDriveSearchDebounced(this.value)" style="margin-bottom:10px"/>'+
+    '<div id="fe-drive-results" style="max-height:50vh;overflow:auto"><div class="fe-sub" style="padding:12px 0">Loading recent files…</div></div>'+
+  '</div></div>';
+  feDriveSearch('');
+}
+let _feDriveT=null;
+function feDriveSearchDebounced(term){ clearTimeout(_feDriveT); _feDriveT=setTimeout(function(){ feDriveSearch(term); }, 350); }
+async function feDriveSearch(term){
+  const box=document.getElementById('fe-drive-results'); if(!box) return;
+  if (typeof gdAccessToken==='undefined' || !gdAccessToken){ box.innerHTML='<div class="fe-err">Not signed in to Google.</div>'; return; }
+  const types="(mimeType='application/vnd.google-apps.document' or mimeType='application/vnd.google-apps.spreadsheet' or mimeType='text/csv' or mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType='application/vnd.ms-excel')";
+  let q=types+" and trashed=false";
+  const t=(term||'').trim().replace(/'/g,"\\'");
+  if(t) q+=" and name contains '"+t+"'";
+  const params=new URLSearchParams({ q:q, orderBy:'modifiedTime desc', pageSize:'30', fields:'files(id,name,mimeType,modifiedTime)', supportsAllDrives:'true', includeItemsFromAllDrives:'true' });
+  try{
+    const r=await fetch('https://www.googleapis.com/drive/v3/files?'+params.toString(), { headers:{ 'Authorization':'Bearer '+gdAccessToken } });
+    if(!r.ok){ box.innerHTML='<div class="fe-err">Drive search failed (HTTP '+r.status+'). Try Disconnect → Sign in with Google again from the Marketing tab.</div>'; return; }
+    const data=await r.json(); const files=(data.files)||[];
+    if(!files.length){ box.innerHTML='<div class="fe-sub" style="padding:12px 0">No matching files.</div>'; return; }
+    box.innerHTML=files.map(function(f){
+      const icon=f.mimeType.indexOf('spreadsheet')>=0?'▦':(f.mimeType.indexOf('document')>=0?'▤':'▢');
+      const when=f.modifiedTime?new Date(f.modifiedTime).toLocaleDateString():'';
+      const nm=JSON.stringify(f.name).replace(/"/g,'&quot;');
+      return '<div class="fe-leadrow" style="margin-bottom:6px" onclick="feDriveParseAndPreview(\''+f.id+'\','+nm+',\''+f.mimeType+'\')">'+
+        '<div class="fe-av">'+icon+'</div><div class="fe-grow"><div class="fe-name fe-trunc"><span class="fe-trunc">'+feEsc(f.name)+'</span></div>'+
+        '<div class="fe-sub">'+when+'</div></div></div>';
+    }).join('');
+  }catch(e){ box.innerHTML='<div class="fe-err">'+feEsc((e&&e.message)||'Search error')+'</div>'; }
 }
 
 loadLocal();
