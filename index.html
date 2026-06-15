@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OxeFit Follow-up Engine</title>
+<style>
+  :root{
+    --bg:#fafafa; --ink:#18181b; --muted:#71717a; --faint:#a1a1aa;
+    --line:#e4e4e7; --card:#ffffff; --dark:#18181b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5}
+  header{background:var(--dark);color:#fff}
+  .wrap{max-width:880px;margin:0 auto;padding:0 20px}
+  .hbar{display:flex;align-items:center;gap:12px;padding:16px 0}
+  .logo{height:36px;width:36px;border-radius:9px;background:#fff;color:var(--dark);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+  .hbar h1{font-size:18px;margin:0;font-weight:600;line-height:1.2}
+  .hbar p{margin:0;font-size:12px;color:#a1a1aa}
+  .tag{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#d4d4d8;
+    border:1px solid #3f3f46;border-radius:6px;padding:4px 8px}
+  .ghost{background:transparent;border:1px solid #3f3f46;color:#e4e4e7;border-radius:8px;
+    padding:6px 10px;font-size:13px;cursor:pointer}
+  .ghost:hover{background:#27272a}
+  main{padding:24px 0 60px}
+  .row-between{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  h2{font-size:16px;margin:0;color:#3f3f46;font-weight:600}
+  .btn{background:var(--dark);color:#fff;border:none;border-radius:9px;padding:9px 13px;
+    font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{background:#3f3f46}
+  .btn:disabled{opacity:.4;cursor:default}
+  .btn-sm{font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;border:1px solid var(--line);
+    background:#fff;color:var(--muted)}
+  .btn-sm:hover{background:#f4f4f5}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  @media(max-width:560px){.grid4{grid-template-columns:repeat(2,1fr)}}
+  .metric{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .metric .lab{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .metric .val{font-size:24px;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .leadrow{width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:8px}
+  .leadrow:hover{border-color:#a1a1aa}
+  .avatar{height:36px;width:36px;border-radius:50%;background:#f4f4f5;color:var(--muted);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:600}
+  .grow{flex:1;min-width:0}
+  .name{font-weight:600;display:flex;align-items:center;gap:8px}
+  .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{font-size:12px;color:var(--faint)}
+  .chip{font-size:11px;border-radius:5px;padding:2px 6px;background:#f4f4f5;color:var(--muted)}
+  .pill{font-size:11px;border-radius:999px;padding:3px 9px;white-space:nowrap}
+  .due{height:8px;width:8px;border-radius:50%;background:#f59e0b;flex-shrink:0}
+  .empty{background:#fff;border:1px dashed #d4d4d8;border-radius:12px;padding:40px;text-align:center}
+  .empty p{margin:0 0 4px}
+  .back{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--muted);
+    font-size:14px;cursor:pointer;margin-bottom:16px;padding:0}
+  .back:hover{color:var(--ink)}
+  .leadhead{padding:20px;margin-bottom:20px}
+  .leadhead .top{display:flex;gap:12px;align-items:flex-start}
+  .meta{font-size:14px;color:var(--muted);margin-top:4px}
+  .meta div{margin:1px 0}
+  .meta .small{font-size:12px;color:var(--faint)}
+  .stages{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .stagebtn{font-size:12px;border-radius:999px;padding:6px 12px;border:1px solid var(--line);
+    background:#fff;color:var(--muted);cursor:pointer}
+  .stagebtn:hover{border-color:#a1a1aa}
+  .stagebtn.active{border-color:transparent;box-shadow:0 0 0 1px #d4d4d8}
+  .divtop{margin-top:16px;padding-top:16px;border-top:1px solid #f0f0f0}
+  .touch{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+  .touch.replied{border-color:#a7f3d0}
+  .touch.skipped{opacity:.6}
+  .touch .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .touch .day{font-size:14px;font-weight:600}
+  .touch .when{font-size:12px;color:var(--faint)}
+  .touch .date{margin-left:auto;font-size:11px;color:var(--faint)}
+  .purpose{font-size:12px;color:var(--faint);margin:0 0 8px}
+  .subject{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .subject span{color:var(--faint)}
+  .msg{font-size:14px;color:#3f3f46;white-space:pre-wrap;background:#fafafa;border-radius:9px;
+    padding:12px;cursor:text}
+  .msg:hover{background:#f4f4f5}
+  textarea,input{font-family:inherit;font-size:14px;width:100%;border:1px solid #d4d4d8;border-radius:9px;
+    padding:9px 11px}
+  textarea:focus,input:focus{outline:none;box-shadow:0 0 0 3px #e4e4e7;border-color:#a1a1aa}
+  .actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+  .ai{background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe}
+  .ai:hover{background:#ede9fe}
+  .right{margin-left:auto;display:flex;gap:8px}
+  .b-blue{border-color:#bfdbfe;color:#1d4ed8}
+  .b-blue:hover{background:#eff6ff}
+  .b-green{border-color:#a7f3d0;color:#047857}
+  .b-green:hover{background:#ecfdf5}
+  .err{font-size:12px;color:#dc2626;margin-top:8px}
+  .note{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);padding:4px 4px}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;
+    justify-content:center;z-index:50;padding:16px}
+  .modal{background:#fff;width:100%;max-width:460px;border-radius:16px;padding:20px;max-height:92vh;overflow:auto}
+  .modal h3{margin:0;font-size:16px;font-weight:600}
+  .field{margin-bottom:12px}
+  .field label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+  .seg{display:flex;gap:8px}
+  .seg button{flex:1;font-size:14px;border-radius:9px;padding:9px;border:1px solid #d4d4d8;
+    background:#fff;color:var(--muted);cursor:pointer}
+  .seg button.on{background:var(--dark);color:#fff;border-color:var(--dark)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal-x{background:none;border:none;font-size:20px;color:var(--faint);cursor:pointer;line-height:1}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#18181b;color:#fff;
+    font-size:13px;padding:10px 16px;border-radius:10px;z-index:60;opacity:0;transition:opacity .2s}
+  .toast.show{opacity:1}
+  /* badge colors */
+  .wa{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
+  .em{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+  .s-pending{background:#f4f4f5;color:#71717a}
+  .s-sent{background:#dbeafe;color:#1d4ed8}
+  .s-replied{background:#d1fae5;color:#047857}
+  .s-skipped{background:#f4f4f5;color:#a1a1aa;text-decoration:line-through}
+  .st-New{background:#f4f4f5;color:#52525b}
+  .st-Contacted{background:#dbeafe;color:#1d4ed8}
+  .st-Engaged{background:#ede9fe;color:#6d28d9}
+  .st-Demo-booked{background:#fef3c7;color:#92400e}
+  .st-Won{background:#d1fae5;color:#047857}
+  .st-Lost{background:#fee2e2;color:#b91c1c}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap hbar">
+    <div class="logo">OX</div>
+    <div class="grow">
+      <h1>OxeFit Follow-up Engine</h1>
+      <p>Every lead gets the same disciplined cadence — automatically.</p>
+    </div>
+    <button class="ghost" onclick="openSettings()">Settings</button>
+    <span class="tag">Standalone</span>
+  </div>
+</header>
+<main class="wrap"><div id="app"></div></main>
+<div id="modal-root"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+const STORAGE_KEY = "oxefit-leads-v1";
+const KEY_STORE = "oxefit-anthropic-key";
+const MODEL_STORE = "oxefit-anthropic-model";
+
+const CADENCE = [
+  { key:"t1", dayLabel:"Day 0", when:"Within 5 min", channel:"WhatsApp", offsetMinutes:0,
+    purpose:"Instant reply and quick qualify (home vs business)",
+    msg:{ b2c:"Hi {name}, thanks for your interest in OxeFit! Quick question so I can help you best — is this for your home, or for a gym/business?",
+          b2b:"Hi {name}, thanks for reaching out to OxeFit! Quick one so I point you the right way — is this for your home, or for {company}?" } },
+  { key:"t2", dayLabel:"Day 0", when:"+2 hours", channel:"WhatsApp", offsetMinutes:120,
+    purpose:"Personal note from the rep with a soft demo offer",
+    msg:{ b2c:"Hi {name}, this is your OxeFit specialist. Most people are surprised how much one system replaces — strength, cardio, recovery and AI coaching in one. I'd love to show how it fits your space. Want me to send a quick 60-second clip?",
+          b2b:"Hi {name}, this is your OxeFit specialist. For {company}, OxeFit can lift member retention and add a premium draw without extra staff. Can I send a short overview built for facilities like yours?" } },
+  { key:"t3", dayLabel:"Day 1", when:"Next day", channel:"WhatsApp", offsetMinutes:1440,
+    purpose:"Send one short matched video",
+    msg:{ b2c:"Here's a quick look at OxeFit in a real home setup: [video link]. Watch how the resistance adjusts automatically as you move — that's the part people love.",
+          b2b:"Sharing how a studio worked OxeFit into their floor: [video link]. Members book it out — it's become a real differentiator for them." } },
+  { key:"t4", dayLabel:"Day 3", when:"3 days in", channel:"WhatsApp", offsetMinutes:4320,
+    purpose:"Social proof, handle the top objection, drop the booking link",
+    msg:{ b2c:"{name}, a customer here had the same thought about space — turned out it fit a corner they weren't using. Easiest way to judge is to feel it: 15 minutes, in person or over video. Here's my calendar: [booking link]. No pressure.",
+          b2b:"{name}, a gym we work with had members signing up specifically for the OxeFit sessions. Worth a 15-minute walkthrough to see if it fits {company}? Here's my calendar: [booking link]." } },
+  { key:"t5", dayLabel:"Day 5", when:"5 days in", channel:"Email", offsetMinutes:7200,
+    purpose:"Lower the money objection — financing (B2C) or ROI (B2B)",
+    subject:{ b2c:"Making OxeFit easy on the budget", b2b:"The numbers behind OxeFit for {company}" },
+    msg:{ b2c:"Hi {name},\n\nWanted to make the investment side simple. OxeFit comes with flexible payment plans and a full warranty, and over a year it usually costs less than a trainer or premium gym membership — while living in your home.\n\nHappy to walk through the options whenever suits. Want me to hold a demo slot this week?\n\nBest,\nYour OxeFit team",
+          b2b:"Hi {name},\n\nSharing a short ROI snapshot for {company}: how OxeFit tends to lift retention, add a premium tier you can charge for, and pay back over the first year. Multi-unit pricing is available.\n\nHappy to tailor the numbers to your floor. Shall I set up a 15-minute call?\n\nBest,\nYour OxeFit team" } },
+  { key:"t6", dayLabel:"Day 8", when:"8 days in", channel:"WhatsApp", offsetMinutes:11520,
+    purpose:"Re-engage quiet leads with a low-commitment option",
+    msg:{ b2c:"Totally understand it's a big decision, {name}. I've got a couple of demo slots this week — want me to hold one, or would a quick video tour be easier?",
+          b2b:"Totally understand these things take time, {name}. I can hold a walkthrough slot this week, or send a tailored video tour for {company} — whichever's easier?" } },
+  { key:"t7", dayLabel:"Day 12", when:"12 days in", channel:"WhatsApp", offsetMinutes:17280,
+    purpose:"Soft break-up that often re-opens the conversation",
+    msg:{ b2c:"{name}, I don't want to keep nudging if the timing's off — should I close your file for now, or keep your spot open? Either answer is completely fine.",
+          b2b:"{name}, I don't want to keep chasing if now isn't right — should I close this off, or keep {company} on the list for later? Either's completely fine." } },
+];
+
+const STAGES = ["New","Contacted","Engaged","Demo booked","Won","Lost"];
+
+let leads = [];
+let view = "dashboard";
+let selectedId = null;
+let editKey = null;     // `${id}:${key}` currently editing
+let aiBusy = null;      // `${id}:${key}` currently tuning
+let aiErr = {};         // map of key -> error string
+
+function load(){ try{ const r=localStorage.getItem(STORAGE_KEY); if(r) leads=JSON.parse(r);}catch(e){} }
+function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(leads)); }catch(e){} }
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function firstName(n){ return (n||"there").trim().split(" ")[0]; }
+function resolve(str, lead){ return (str||"").split("{name}").join(firstName(lead.name)).split("{company}").join(lead.company?lead.company:"your team"); }
+
+function genTouches(lead){
+  const base = Date.parse(lead.createdAt);
+  const v = lead.type==="B2B" ? "b2b" : "b2c";
+  return CADENCE.map(t => ({
+    key:t.key, dayLabel:t.dayLabel, when:t.when, channel:t.channel, purpose:t.purpose,
+    scheduledAt: new Date(base + t.offsetMinutes*60000).toISOString(),
+    status:"pending",
+    subject: t.subject ? resolve(t.subject[v]||t.subject.b2c, lead) : null,
+    message: resolve(t.msg[v]||t.msg.b2c, lead),
+  }));
+}
+function fmtDate(iso){ try{ return new Date(iso).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}catch(e){return"";} }
+function getLead(id){ return leads.find(l=>l.id===id); }
+
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),1400);
+}
+
+/* ---------- mutations ---------- */
+function addLead(){
+  const name=document.getElementById("f-name").value.trim();
+  if(!name){ document.getElementById("f-name").focus(); return; }
+  const lead={
+    id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    createdAt:new Date().toISOString(), stage:"New", name,
+    company:document.getElementById("f-company")?document.getElementById("f-company").value.trim():"",
+    type:window._ftype||"B2C", language:window._flang||"English",
+    phone:document.getElementById("f-phone").value.trim(),
+    email:document.getElementById("f-email").value.trim(),
+    source:document.getElementById("f-source").value.trim(),
+    note:document.getElementById("f-note").value.trim(),
+  };
+  lead.touches=genTouches(lead);
+  leads.unshift(lead); save(); closeModal();
+  selectedId=lead.id; view="lead"; render();
+}
+function setStage(id,stage){ const l=getLead(id); if(l){ l.stage=stage; save(); render(); } }
+function markTouch(id,key,status){
+  const l=getLead(id); if(!l) return;
+  const t=l.touches.find(x=>x.key===key); if(!t) return;
+  if(t.status==="skipped"&&status==="skipped"){ t.status="pending"; }
+  else { t.status=status; }
+  // light auto-progression
+  if(status==="sent" && l.stage==="New") l.stage="Contacted";
+  if(status==="replied" && (l.stage==="New"||l.stage==="Contacted")) l.stage="Engaged";
+  save(); render();
+}
+function startEdit(id,key){ editKey=id+":"+key; render(); setTimeout(()=>{const a=document.getElementById("edit-area"); if(a){a.focus();a.setSelectionRange(a.value.length,a.value.length);}},0); }
+function cancelEdit(){ editKey=null; render(); }
+function saveEdit(id,key){ const l=getLead(id); const t=l&&l.touches.find(x=>x.key===key); const a=document.getElementById("edit-area"); if(t&&a){ t.message=a.value; } editKey=null; save(); render(); }
+function copyTouch(id,key){ const l=getLead(id); const t=l&&l.touches.find(x=>x.key===key); if(!t) return;
+  const text=t.subject?("Subject: "+t.subject+"\n\n"+t.message):t.message;
+  navigator.clipboard.writeText(text).then(()=>toast("Copied")).catch(()=>toast("Copy failed")); }
+
+async function tuneTouch(id,key){
+  const l=getLead(id); const t=l&&l.touches.find(x=>x.key===key); if(!t) return;
+  const apiKey=localStorage.getItem(KEY_STORE);
+  if(!apiKey){ openSettings(); toast("Add your Anthropic API key first"); return; }
+  const model=localStorage.getItem(MODEL_STORE)||"claude-sonnet-4-6";
+  aiBusy=id+":"+key; delete aiErr[id+":"+key]; render();
+  const isEmail=t.channel==="Email";
+  const prompt =
+"You help a sales rep at OxeFit (premium connected home-gym equipment, sold worldwide outside the Americas, based in the UAE).\n"+
+"Write a single "+t.channel+" message for this lead. Return ONLY the message text — no preamble, no quotation marks, no notes.\n"+
+"Write it in "+l.language+". Keep it warm, concise, human and professional.\n"+
+(isEmail?'Start with one line "Subject: ..." then a blank line then the body.':"No subject line — this is a chat message.")+"\n\n"+
+"Lead: name="+l.name+"; type="+l.type+"; company="+(l.company||"n/a")+"; source="+(l.source||"unknown")+"; notes="+(l.note||"none")+"; pipeline stage="+l.stage+".\n"+
+"Goal of this message: "+t.purpose+".\n"+
+'Current draft to improve on: """'+t.message+'"""';
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json","x-api-key":apiKey,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true" },
+      body:JSON.stringify({ model:model, max_tokens:1024, messages:[{role:"user",content:prompt}] })
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message||"API error");
+    let text=(data.content||[]).map(b=>b.type==="text"?b.text:"").join("").trim();
+    if(!text) throw new Error("Empty response");
+    if(isEmail && /^subject:/i.test(text)){
+      const nl=text.indexOf("\n");
+      t.subject=text.slice(0, nl<0?undefined:nl).replace(/^subject:\s*/i,"").trim();
+      text=nl<0?"":text.slice(nl+1).trim();
+    }
+    t.message=text; save();
+  }catch(e){
+    aiErr[id+":"+key]=e.message||"Couldn't reach the model. Check your key/model in Settings.";
+  }finally{ aiBusy=null; render(); }
+}
+
+/* ---------- modals ---------- */
+function openAdd(){
+  window._ftype="B2C"; window._flang="English";
+  document.getElementById("modal-root").innerHTML=`
+  <div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="row-between" style="margin-bottom:16px">
+        <h3>New lead</h3><button class="modal-x" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="field"><label>Name</label><input id="f-name" placeholder="e.g. Omar Al Mansoori"/></div>
+      <div class="field"><label>Buyer type</label>
+        <div class="seg" id="seg-type">
+          <button class="on" data-v="B2C" onclick="pickType('B2C')">Home (B2C)</button>
+          <button data-v="B2B" onclick="pickType('B2B')">Business (B2B)</button>
+        </div>
+      </div>
+      <div class="field" id="company-field" style="display:none"><label>Company</label><input id="f-company" placeholder="Gym, hotel, studio…"/></div>
+      <div class="two">
+        <div class="field"><label>Phone</label><input id="f-phone" placeholder="+971…"/></div>
+        <div class="field"><label>Email</label><input id="f-email" placeholder="name@…"/></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Source</label><input id="f-source" placeholder="Instagram, referral…"/></div>
+        <div class="field"><label>Language</label>
+          <div class="seg" id="seg-lang">
+            <button class="on" data-v="English" onclick="pickLang('English')">English</button>
+            <button data-v="Arabic" onclick="pickLang('Arabic')">Arabic</button>
+          </div>
+        </div>
+      </div>
+      <div class="field"><label>Notes (what they asked / their goal)</label>
+        <textarea id="f-note" rows="2" placeholder="Wants strength + recovery, small villa gym…"></textarea></div>
+      <button class="btn" style="width:100%;justify-content:center" onclick="addLead()">Add lead and build cadence</button>
+    </div>
+  </div>`;
+  setTimeout(()=>document.getElementById("f-name").focus(),0);
+}
+function pickType(v){ window._ftype=v;
+  document.querySelectorAll("#seg-type button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  document.getElementById("company-field").style.display = v==="B2B"?"block":"none"; }
+function pickLang(v){ window._flang=v;
+  document.querySelectorAll("#seg-lang button").forEach(b=>b.classList.toggle("on",b.dataset.v===v)); }
+
+function openSettings(){
+  const key=localStorage.getItem(KEY_STORE)||"";
+  const model=localStorage.getItem(MODEL_STORE)||"claude-sonnet-4-6";
+  document.getElementById("modal-root").innerHTML=`
+  <div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="row-between" style="margin-bottom:16px">
+        <h3>Settings</h3><button class="modal-x" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="field"><label>Anthropic API key (for "Tune with AI")</label>
+        <input id="s-key" type="password" placeholder="sk-ant-…" value="${esc(key)}"/></div>
+      <div class="field"><label>Model</label><input id="s-model" value="${esc(model)}"/></div>
+      <p class="sub" style="line-height:1.5;margin:0 0 14px">Your key is stored only in this browser (local storage) and used to call Anthropic directly. It is never sent anywhere else. Leave blank to use the tool without AI.</p>
+      <div class="seg">
+        <button class="on" style="background:#18181b;color:#fff;border-color:#18181b" onclick="saveSettings()">Save</button>
+        <button onclick="clearKey()">Remove key</button>
+      </div>
+    </div>
+  </div>`;
+}
+function saveSettings(){
+  const k=document.getElementById("s-key").value.trim();
+  const m=document.getElementById("s-model").value.trim()||"claude-sonnet-4-6";
+  if(k) localStorage.setItem(KEY_STORE,k); else localStorage.removeItem(KEY_STORE);
+  localStorage.setItem(MODEL_STORE,m); closeModal(); toast("Settings saved");
+}
+function clearKey(){ localStorage.removeItem(KEY_STORE); closeModal(); toast("Key removed"); }
+function closeModal(){ document.getElementById("modal-root").innerHTML=""; }
+
+/* ---------- render ---------- */
+function render(){
+  const app=document.getElementById("app");
+  if(view==="lead"){ const l=getLead(selectedId); if(l){ app.innerHTML=renderLead(l); return; } view="dashboard"; }
+  app.innerHTML=renderDashboard();
+}
+
+function renderDashboard(){
+  const now=Date.now();
+  const dueNow=leads.filter(l=>!["Won","Lost"].includes(l.stage)&&l.touches.some(t=>t.status==="pending"&&Date.parse(t.scheduledAt)<=now)).length;
+  const booked=leads.filter(l=>l.stage==="Demo booked").length;
+  const won=leads.filter(l=>l.stage==="Won").length;
+
+  let rows;
+  if(leads.length===0){
+    rows=`<div class="empty"><p style="font-weight:500">No leads yet.</p>
+      <p class="sub" style="margin-bottom:16px">Add your first lead and the full follow-up cadence builds itself.</p>
+      <button class="btn" onclick="openAdd()">+ Add a lead</button></div>`;
+  } else {
+    rows=leads.map(l=>{
+      const na=nextAction(l,now);
+      return `<button class="leadrow" onclick="openLead('${l.id}')">
+        <div class="avatar">${l.type==="B2B"?"B":firstName(l.name)[0]?.toUpperCase()||"·"}</div>
+        <div class="grow">
+          <div class="name truncate"><span class="truncate">${esc(l.name)}</span><span class="chip">${l.type}</span></div>
+          <div class="sub truncate">${l.company?esc(l.company)+" · ":""}${esc(na.label)}${na.when?" · "+na.when:""}</div>
+        </div>
+        <span class="pill ${stageClass(l.stage)}">${l.stage}</span>
+        ${na.due?'<span class="due" title="Touch due"></span>':""}
+      </button>`;
+    }).join("");
+  }
+
+  return `
+    <div class="row-between">
+      <h2>Pipeline</h2>
+      <button class="btn" onclick="openAdd()">+ New lead</button>
+    </div>
+    <div class="grid4">
+      <div class="metric"><div class="lab">Total leads</div><div class="val">${leads.length}</div></div>
+      <div class="metric"><div class="lab">Action due now</div><div class="val">${dueNow}</div></div>
+      <div class="metric"><div class="lab">Demos booked</div><div class="val">${booked}</div></div>
+      <div class="metric"><div class="lab">Won</div><div class="val">${won}</div></div>
+    </div>
+    ${rows}`;
+}
+
+function nextAction(l,now){
+  if(["Won","Lost"].includes(l.stage)) return {label:l.stage,when:""};
+  const pending=l.touches.filter(t=>t.status==="pending").sort((a,b)=>Date.parse(a.scheduledAt)-Date.parse(b.scheduledAt));
+  if(!pending.length) return {label:"Cadence complete",when:""};
+  const t=pending[0];
+  return {label:t.dayLabel+" · "+t.channel, when:fmtDate(t.scheduledAt), due:Date.parse(t.scheduledAt)<=now};
+}
+function stageClass(s){ return "st-"+s.replace(/ /g,"-"); }
+
+function renderLead(l){
+  const head=`
+    <button class="back" onclick="goDash()">← Pipeline</button>
+    <div class="card leadhead">
+      <div class="top">
+        <div class="avatar" style="height:44px;width:44px;font-size:15px">${l.type==="B2B"?"B":firstName(l.name)[0]?.toUpperCase()||"·"}</div>
+        <div class="grow">
+          <div class="name">${esc(l.name)} <span class="chip">${l.type}</span> <span class="chip">${esc(l.language)}</span></div>
+          <div class="meta">
+            ${l.company?`<div>${esc(l.company)}</div>`:""}
+            ${l.phone?`<div>${esc(l.phone)}</div>`:""}
+            ${l.email?`<div>${esc(l.email)}</div>`:""}
+            ${l.source?`<div class="small">Source: ${esc(l.source)}</div>`:""}
+            ${l.note?`<div class="small"><em>"${esc(l.note)}"</em></div>`:""}
+          </div>
+        </div>
+      </div>
+      <div class="divtop">
+        <div class="sub" style="margin-bottom:8px">Pipeline stage</div>
+        <div class="stages">
+          ${STAGES.map(s=>`<button class="stagebtn ${l.stage===s?'active '+stageClass(s):''}" onclick="setStage('${l.id}','${s}')">${s}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+    <div class="row-between" style="margin-bottom:12px">
+      <h2>Follow-up cadence</h2><span class="sub">7 touches over 12 days</span>
+    </div>`;
+
+  const touches=l.touches.map(t=>renderTouch(l,t)).join("");
+  const footer=`<div class="note">⟳ Still silent after Day 12 → move to monthly nurture. Never delete the lead.</div>`;
+  return head+touches+footer;
+}
+
+function renderTouch(l,t){
+  const k=l.id+":"+t.key;
+  const editing=editKey===k;
+  const busy=aiBusy===k;
+  const err=aiErr[k];
+  const chan=t.channel==="WhatsApp"?"wa":"em";
+  const body = editing
+    ? `<textarea id="edit-area" rows="5">${esc(t.message)}</textarea>
+       <div class="actions" style="margin-top:8px">
+         <button class="btn btn-sm" style="background:#18181b;color:#fff;border:none" onclick="saveEdit('${l.id}','${t.key}')">Save</button>
+         <button class="btn-sm" onclick="cancelEdit()">Cancel</button></div>`
+    : `<div class="msg" onclick="startEdit('${l.id}','${t.key}')">${esc(t.message)}</div>`;
+
+  return `<div class="touch ${t.status}">
+    <div class="head">
+      <span class="day">${t.dayLabel}</span>
+      <span class="when">${t.when}</span>
+      <span class="pill ${chan}">${t.channel}</span>
+      <span class="pill s-${t.status}">${t.status}</span>
+      <span class="date">${fmtDate(t.scheduledAt)}</span>
+    </div>
+    <p class="purpose">${esc(t.purpose)}</p>
+    ${t.subject?`<div class="subject"><span>Subject:</span> ${esc(t.subject)}</div>`:""}
+    ${body}
+    ${err?`<div class="err">${esc(err)}</div>`:""}
+    <div class="actions">
+      <button class="btn-sm ai" ${busy?"disabled":""} onclick="tuneTouch('${l.id}','${t.key}')">✦ ${busy?"Tuning…":"Tune with AI"}</button>
+      <button class="btn-sm" onclick="copyTouch('${l.id}','${t.key}')">Copy</button>
+      <div class="right">
+        <button class="btn-sm b-blue" onclick="markTouch('${l.id}','${t.key}','sent')">Mark sent</button>
+        <button class="btn-sm b-green" onclick="markTouch('${l.id}','${t.key}','replied')">Replied</button>
+        <button class="btn-sm" title="Skip" onclick="markTouch('${l.id}','${t.key}','skipped')">Skip</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function openLead(id){ selectedId=id; view="lead"; editKey=null; render(); }
+function goDash(){ view="dashboard"; render(); }
+
+load(); render();
+</script>
+</body>
+</html>
