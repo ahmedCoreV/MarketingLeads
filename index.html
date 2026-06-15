@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"> <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>CoreV | OxeFit Sales Tracker v21.32</title>
+<title>CoreV | OxeFit Sales Tracker v21.33</title>
 
 <!-- v19.0 — apply saved/system theme BEFORE first paint to avoid flash -->
 <script>
@@ -3810,7 +3810,7 @@
     </div>
 
     <div style="text-align:center; margin-top:18px; padding-top:14px; border-top:1px solid var(--input-bg); font-size:10px; color:var(--text-muted); letter-spacing:0.5px; text-transform:uppercase;">
-      v21.31 · Marketing import detects multiple tables · works on any Drive sheet
+      v21.33 · Follow-up Engine + Google Drive multi-sheet import
     </div>
   </div>
 </div>
@@ -3883,7 +3883,7 @@
 
     <div class="settings-block">
       <div class="settings-block-title">About</div>
-      <p class="settings-note">CoreV | OxeFit Sales Tracker · <strong>v21.32</strong></p>
+      <p class="settings-note">CoreV | OxeFit Sales Tracker · <strong>v21.33</strong></p>
     </div>
   </div>
 </div>
@@ -3955,7 +3955,7 @@
         <span class="theme-toggle-track"><span class="theme-toggle-thumb"></span></span>
         <span class="theme-toggle-ico moon">☾</span>
       </button>
-      <div class="sidebar-version">v21.32</div>
+      <div class="sidebar-version">v21.33 · FE</div>
     </div>
   </aside>
 
@@ -16332,14 +16332,57 @@ async function feFetchDriveText(fileId, fileName, mimeType){
 async function feDriveParseAndPreview(fileId, fileName, mimeType){
   feImportErr=''; feImportBusy=true; feRenderImportInput();
   try{
-    const raw=(await feFetchDriveText(fileId, fileName, mimeType)||'').trim();
-    if(!raw) throw new Error('That file looks empty.');
-    if(feKey()){ try{ feImportPreview=await feParseSmart(raw); } catch(e){ feImportErr=((e&&e.message)||'Smart parse failed')+' — using simple parse.'; feImportPreview=feParseSimple(raw); } }
-    else { feImportPreview=feParseSimple(raw); }
+    const sheets=await feFetchDriveRows(fileId, fileName, mimeType);
+    const tabular = sheets.some(function(s){ return (s.aoa||[]).some(function(r){ return (r||[]).length>1; }); });
+    let leads=[];
+    if(tabular){ sheets.forEach(function(s){ leads=leads.concat(feSheetToLeads(s.aoa)); }); }
+    if(!leads.length && feKey()){ try{ leads=await feParseSmart(feSheetsToText(sheets)); }catch(e){} }
+    if(!leads.length && !tabular){ leads=feParseSimple(feSheetsToText(sheets)); }
     feImportBusy=false;
-    if(!feImportPreview.length){ feImportErr='No leads found in "'+(fileName||'file')+'".'; feRenderImportInput(); return; }
-    feRenderImportPreview();
+    if(!leads.length){
+      const cols=feFirstHeaders(sheets);
+      feImportErr='Read '+sheets.length+' sheet'+(sheets.length===1?'':'s')+" but couldn't identify lead columns"+(cols?' (columns found: '+cols+')':'')+'. Add an AI key below for smarter parsing, or tell me your column names.';
+      feRenderImportInput(); return;
+    }
+    feImportPreview=leads; feRenderImportPreview();
   }catch(e){ feImportBusy=false; feImportErr=(e&&e.message)||'Could not import from Google Drive.'; feRenderImportInput(); }
+}
+function feSheetsToText(sheets){ const parts=[]; (sheets||[]).forEach(function(s){ if(s.name) parts.push('# Sheet: '+s.name); parts.push((s.aoa||[]).map(function(row){ return (row||[]).map(function(c){ return c==null?'':String(c); }).join('\t'); }).join('\n')); }); return parts.join('\n\n'); }
+function feFirstHeaders(sheets){ for(var i=0;i<(sheets||[]).length;i++){ var aoa=sheets[i].aoa||[]; for(var j=0;j<Math.min(aoa.length,8);j++){ var r=(aoa[j]||[]).map(function(c){ return c==null?'':String(c).trim(); }); if(r.filter(Boolean).length>1) return r.filter(Boolean).slice(0,12).join(', '); } } return ''; }
+function feHeaderIndex(H, keys, used){
+  used=used||{};
+  for(var k=0;k<keys.length;k++){ for(var i=0;i<H.length;i++){ if(!used[i] && H[i]===keys[k]) return i; } }
+  for(var k2=0;k2<keys.length;k2++){ for(var i2=0;i2<H.length;i2++){ if(!used[i2] && H[i2].indexOf(keys[k2])>=0) return i2; } }
+  return -1;
+}
+function feSheetToLeads(aoa){
+  var rows=(aoa||[]).map(function(r){ return (r||[]).map(function(c){ return c==null?'':String(c).trim(); }); }).filter(function(r){ return r.some(function(c){ return c!==''; }); });
+  if(!rows.length) return [];
+  var hi=-1;
+  for(var i=0;i<Math.min(rows.length,8);i++){ var low=rows[i].map(function(c){ return c.toLowerCase(); }).join('|'); if(/name|email|e-mail|phone|mobile|whatsapp|company/.test(low)){ hi=i; break; } }
+  var leads=[];
+  if(hi>=0){
+    var H=rows[hi].map(function(c){ return c.toLowerCase(); });
+    var used={};
+    var pick=function(keys){ var ix=feHeaderIndex(H,keys,used); if(ix>=0) used[ix]=1; return ix; };
+    var iCompany=pick(['company','business','organisation','organization','account','gym','hotel','studio','org']);
+    var iEmail=pick(['email','e-mail','mail']);
+    var iPhone=pick(['whatsapp','mobile','phone','tel','contact number','number']);
+    var iName=pick(['full name','lead name','contact name','name','client','lead','contact']);
+    var iType=pick(['type','segment','category','b2b','b2c']);
+    var iSource=pick(['source','channel','origin','campaign','lead source']);
+    var iNote=pick(['note','comment','remark','detail','requirement','interest','message']);
+    for(var r2=hi+1;r2<rows.length;r2++){ var row=rows[r2];
+      var g=function(ix){ return ix>=0?(row[ix]||''):''; };
+      var name=g(iName);
+      if(!name && iName<0){ for(var c2=0;c2<row.length;c2++){ if(row[c2]){ name=row[c2]; break; } } }
+      if(!name) continue;
+      leads.push(feNormalize({ name:name, email:g(iEmail), phone:g(iPhone), company:g(iCompany), type:g(iType), source:g(iSource), note:g(iNote) }));
+    }
+  } else {
+    rows.forEach(function(row){ if(row[0]) leads.push(feNormalize({ name:row[0], phone:row[1], email:row[2], company:row[3], source:row[4], note:row.slice(5).join(' ') })); });
+  }
+  return leads;
 }
 function feImportFromDrive(){
   if (typeof gdEnsureInit==='function'){ try{ gdEnsureInit(); }catch(e){} }
