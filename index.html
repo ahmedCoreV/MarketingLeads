@@ -186,6 +186,9 @@ let selectedId = null;
 let editKey = null;     // `${id}:${key}` currently editing
 let aiBusy = null;      // `${id}:${key}` currently tuning
 let aiErr = {};         // map of key -> error string
+let importPreview = [];  // parsed leads awaiting confirmation
+let importBusy = false;  // AI parse in progress
+let importErr = "";
 
 function load(){ try{ const r=localStorage.getItem(STORAGE_KEY); if(r) leads=JSON.parse(r);}catch(e){} }
 function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(leads)); }catch(e){} }
@@ -357,6 +360,163 @@ function saveSettings(){
 function clearKey(){ localStorage.removeItem(KEY_STORE); closeModal(); toast("Key removed"); }
 function closeModal(){ document.getElementById("modal-root").innerHTML=""; }
 
+/* ---------- bulk import ---------- */
+function openImport(){
+  importPreview=[]; importErr=""; importBusy=false;
+  renderImportInput();
+}
+function renderImportInput(){
+  const hasKey=!!localStorage.getItem(KEY_STORE);
+  document.getElementById("modal-root").innerHTML=`
+  <div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:560px">
+      <div class="row-between" style="margin-bottom:12px">
+        <h3>Import leads</h3><button class="modal-x" onclick="closeModal()">&times;</button>
+      </div>
+      <p class="sub" style="line-height:1.55;margin:0 0 12px">
+        Paste your list from the Google Doc (or a spreadsheet). One lead per line is fine — names, phones, emails, companies, notes in any order.
+        ${hasKey
+          ? 'Smart parse will read it and sort each lead into B2B or B2C for you.'
+          : 'Add your Anthropic key in Settings for smart parsing, or paste columns as <em>name, type, phone, email, company, source, note</em>.'}
+      </p>
+      <textarea id="imp-raw" rows="9" placeholder="Omar Al Mansoori, +971 50 123 4567, omar@email.com — wants home setup, small villa gym\nFitZone Gym (Dubai), Sara Khalifa, sara@fitzone.ae, +971 4 555 0199 — 3 locations, interested in member retention\n..."></textarea>
+      ${importErr?`<div class="err">${esc(importErr)}</div>`:""}
+      <div class="actions" style="margin-top:14px">
+        <button class="btn ${importBusy?'':''}" ${importBusy?'disabled':''} onclick="runImportParse()">${importBusy?'Reading your list…':(hasKey?'Smart parse':'Parse list')}</button>
+        <button class="btn-sm" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function runImportParse(){
+  const raw=(document.getElementById("imp-raw").value||"").trim();
+  if(!raw){ importErr="Paste your leads first."; renderImportInput(); return; }
+  importErr="";
+  const hasKey=!!localStorage.getItem(KEY_STORE);
+  if(hasKey){
+    importBusy=true; renderImportInput();
+    try{ importPreview=await parseSmart(raw); }
+    catch(e){ importErr=(e.message||"Smart parse failed")+" — falling back to simple parse."; importPreview=parseSimple(raw); }
+    importBusy=false;
+  } else {
+    importPreview=parseSimple(raw);
+  }
+  if(!importPreview.length){ importErr="Couldn't find any leads in that text. Check the format and try again."; renderImportInput(); return; }
+  renderImportPreview();
+}
+async function parseSmart(raw){
+  const apiKey=localStorage.getItem(KEY_STORE);
+  const model=localStorage.getItem(MODEL_STORE)||"claude-sonnet-4-6";
+  const prompt =
+"You are parsing a sales lead list pasted from a document for OxeFit (premium connected fitness equipment).\n"+
+"Extract EVERY lead. Return ONLY a JSON array — no prose, no markdown, no code fences.\n"+
+'Each item: {"name":string,"type":"B2C" or "B2B","company":string,"phone":string,"email":string,"source":string,"note":string,"language":"English" or "Arabic"}.\n'+
+"Rules: individuals / home buyers = B2C. Gyms, hotels, studios, clinics, companies, corporate wellness, resellers = B2B (put the business in company).\n"+
+"If a field is missing use an empty string. If unsure of type, use B2C. Default language English unless the name/text is clearly Arabic. Keep notes short.\n\n"+
+"LIST:\n"+raw;
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json","x-api-key":apiKey,
+      "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true" },
+    body:JSON.stringify({ model:model, max_tokens:4096, messages:[{role:"user",content:prompt}] })
+  });
+  const data=await res.json();
+  if(data.error) throw new Error(data.error.message||"API error");
+  let text=(data.content||[]).map(b=>b.type==="text"?b.text:"").join("").trim();
+  text=text.replace(/^```(json)?/i,"").replace(/```$/,"").trim();
+  const arr=JSON.parse(text);
+  if(!Array.isArray(arr)) throw new Error("Unexpected response");
+  return arr.map(normalizeLead).filter(l=>l.name);
+}
+function parseSimple(raw){
+  const lines=raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(!lines.length) return [];
+  const delim = lines[0].includes("\t") ? "\t" : ",";
+  let headers=null, start=0;
+  if(/name/i.test(lines[0]) && lines[0].split(delim).length>1){
+    headers=lines[0].split(delim).map(h=>h.trim().toLowerCase()); start=1;
+  }
+  const out=[];
+  for(let i=start;i<lines.length;i++){
+    const cells=lines[i].split(delim).map(c=>c.trim());
+    let o;
+    if(headers){
+      o={}; headers.forEach((h,idx)=>{ o[h]=cells[idx]||""; });
+      o={ name:o.name, type:o.type, company:o.company, phone:o.phone, email:o.email||o["e-mail"], source:o.source, note:o.note||o.notes };
+    } else {
+      o={ name:cells[0], type:cells[1], phone:cells[2], email:cells[3], company:cells[4], source:cells[5], note:cells.slice(6).join(" ") };
+    }
+    if(o.name) out.push(normalizeLead(o));
+  }
+  return out;
+}
+function normalizeLead(o){
+  o=o||{};
+  const txt=((o.type||"")+" "+(o.company||"")+" "+(o.note||"")+" "+(o.name||"")).toLowerCase();
+  let type=(o.type||"").toUpperCase();
+  if(type!=="B2B"&&type!=="B2C"){
+    type=/b2b|business|gym|hotel|studio|clinic|company|corporate|reseller|wellness center|fitness center/.test(txt) ? "B2B" : "B2C";
+  }
+  return {
+    name:(o.name||"").trim(),
+    type,
+    company:(o.company||"").trim(),
+    phone:(o.phone||"").trim(),
+    email:(o.email||"").trim(),
+    source:(o.source||"").trim(),
+    note:(o.note||"").trim(),
+    language:(o.language==="Arabic"?"Arabic":"English"),
+  };
+}
+function renderImportPreview(){
+  const b2b=importPreview.filter(l=>l.type==="B2B").length;
+  const b2c=importPreview.length-b2b;
+  const rows=importPreview.map((l,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0">
+      <div class="grow" style="min-width:0">
+        <div class="name truncate" style="font-size:14px"><span class="truncate">${esc(l.name||"(no name)")}</span>${l.company?`<span class="chip">${esc(l.company)}</span>`:""}</div>
+        <div class="sub truncate">${[l.phone,l.email,l.source].filter(Boolean).map(esc).join(" · ")||"&nbsp;"}</div>
+      </div>
+      <select onchange="importPreview[${i}].type=this.value" style="width:auto;padding:5px 8px;font-size:12px">
+        <option value="B2C" ${l.type==="B2C"?"selected":""}>B2C</option>
+        <option value="B2B" ${l.type==="B2B"?"selected":""}>B2B</option>
+      </select>
+      <button class="btn-sm" onclick="dropImport(${i})" title="Remove">✕</button>
+    </div>`).join("");
+  document.getElementById("modal-root").innerHTML=`
+  <div class="overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:560px">
+      <div class="row-between" style="margin-bottom:8px">
+        <h3>Review ${importPreview.length} lead${importPreview.length===1?"":"s"}</h3>
+        <button class="modal-x" onclick="closeModal()">&times;</button>
+      </div>
+      <p class="sub" style="margin:0 0 12px">${b2c} home (B2C) · ${b2b} business (B2B). Fix any type below, then import — each lead gets the full 12-day cadence.</p>
+      <div style="max-height:46vh;overflow:auto;margin-bottom:14px">${rows}</div>
+      <div class="actions">
+        <button class="btn" onclick="confirmImport()">Import ${importPreview.length} lead${importPreview.length===1?"":"s"}</button>
+        <button class="btn-sm" onclick="renderImportInput()">Back</button>
+      </div>
+    </div>
+  </div>`;
+}
+function dropImport(i){ importPreview.splice(i,1); if(!importPreview.length){ renderImportInput(); } else { renderImportPreview(); } }
+function confirmImport(){
+  const now=Date.now();
+  const made=importPreview.map((p,idx)=>{
+    const lead={
+      id:(now+idx).toString(36)+Math.random().toString(36).slice(2,6),
+      createdAt:new Date().toISOString(), stage:"New",
+      name:p.name, company:p.company, type:p.type, language:p.language,
+      phone:p.phone, email:p.email, source:p.source, note:p.note,
+    };
+    lead.touches=genTouches(lead);
+    return lead;
+  });
+  leads=made.concat(leads); save();
+  const n=made.length; importPreview=[]; closeModal();
+  view="dashboard"; render(); toast(`Imported ${n} lead${n===1?"":"s"}`);
+}
+
 /* ---------- render ---------- */
 function render(){
   const app=document.getElementById("app");
@@ -373,8 +533,11 @@ function renderDashboard(){
   let rows;
   if(leads.length===0){
     rows=`<div class="empty"><p style="font-weight:500">No leads yet.</p>
-      <p class="sub" style="margin-bottom:16px">Add your first lead and the full follow-up cadence builds itself.</p>
-      <button class="btn" onclick="openAdd()">+ Add a lead</button></div>`;
+      <p class="sub" style="margin-bottom:16px">Add a lead, or import your whole list — the cadence builds itself.</p>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="btn" onclick="openAdd()">+ Add a lead</button>
+        <button class="ghost" style="border-color:#d4d4d8;color:#3f3f46" onclick="openImport()">Import a list</button>
+      </div></div>`;
   } else {
     rows=leads.map(l=>{
       const na=nextAction(l,now);
@@ -393,7 +556,10 @@ function renderDashboard(){
   return `
     <div class="row-between">
       <h2>Pipeline</h2>
-      <button class="btn" onclick="openAdd()">+ New lead</button>
+      <div style="display:flex;gap:8px">
+        <button class="ghost" style="border-color:#d4d4d8;color:#3f3f46" onclick="openImport()">Import list</button>
+        <button class="btn" onclick="openAdd()">+ New lead</button>
+      </div>
     </div>
     <div class="grid4">
       <div class="metric"><div class="lab">Total leads</div><div class="val">${leads.length}</div></div>
